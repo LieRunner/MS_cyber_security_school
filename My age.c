@@ -4,7 +4,7 @@ int main(void)
 {
 	
 	
-	int age, score;   // 정수,변수 선언문
+	int age, score, score2;   // 정수,변수 선언문
 	 
 	printf("나이가 어떻게 되세요? :"); scanf("%d", &age);
     printf("점수는요? :"); scanf("%d", &score);
@@ -13,7 +13,8 @@ int main(void)
 	printf("%d is my point \n", score);
 	printf("Good \nmornig \neverybody\n\n\n");
 
-    printf("수고하셨습니다.");	  
+    printf("이번 문답을 평가해 주세요 :"); scanf("%d" , &score2); 
+	printf("%d 점!\n 수고하셨습니다!.",score2);	  
 	  
 	return 0;
 }
