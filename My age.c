@@ -11,9 +11,9 @@ int main(void)
 
 	printf("my age : %d \n", age);
 	printf("%d is my point \n", score);
-	printf("Good \nmornig \neverybody\n");
+	printf("Good \nmornig \neverybody\n\n\n");
 
-	  
+    printf("수고하셨습니다.");	  
 	  
 	return 0;
 }
