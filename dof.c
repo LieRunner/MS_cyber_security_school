@@ -3,5 +3,6 @@
 int main(void)
 {
 	printf("¾ÕÁý °­¾ÆÁö°¡ Â¢¾ú´Ù \" ¸Û¸Û \" Á¤¸» ±Í¿±´Ù");
+	getchar();
 	return(0); 
 }
