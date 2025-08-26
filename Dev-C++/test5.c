@@ -26,13 +26,12 @@ int main()
 	
 		case '/':printf("%d %c %d = %f\n", v1, k, v2, (double)v1/(double)v2); 
 		break;
-		default: k = 3; break;
+		default: k = 3; break; //즉, default 문이 없다면 다른 키를 입력했을 때 k 값이 변하지 않고, 
+		                       //if(k==3) 조건이 작동하지 않아서 무한루프에서 빠져나오지 못할 수 있다.
 	}
 	if(k==3) break; //다른 키를 입력하면 종료 (3은 입력할수 없는 수 이기에)
 }
-	
-
-	  
+	}
  
 	
 	
@@ -56,4 +55,4 @@ int main()
 	}
 	else break; //다른 키가 눌리면 종료 */
 	
-}
+
