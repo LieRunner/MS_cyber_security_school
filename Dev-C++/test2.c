@@ -1,18 +1,15 @@
-#include <stdio.h>
+#include<stdio.h>
 
 int main()
 {
-	printf("합계  인덱스\n");
-	int index = 1, val= 0;
-	    //↑시작 
-	while(index<10){
-		    //↑끝 
-		val= val+index;
-		printf("%-3d     %03d\n",val, index); //%(- or 0)(n)d 정렬됨 
-		//index++;
-		index = index + 2;
-	}
-	
-	
-	printf("인덱스 시작값은 %d이다\n",index) 
+	int x, y;
+	int A, O, X, N;
+	printf("x y A O X N\n");
+	printf("===========\n");
+	x=1, y=1; printf("%d,%d,%d,%d,%d,%d\n",x,y,x&&y,x||y,x^y,!x);
+	x=1, y=0; printf("%d,%d,%d,%d,%d,%d\n",x,y,x&&y,x||y,x^y,!x);
+	x=0, y=1; printf("%d,%d,%d,%d,%d,%d\n",x,y,x&&y,x||y,x^y,!x);
+	x=0, y=0; printf("%d,%d,%d,%d,%d,%d\n",x,y,x&&y,x||y,x^y,!x);
+    return 0;
+
 }

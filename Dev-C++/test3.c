@@ -2,14 +2,10 @@
 
 int main()
 {
-	int x, y;
-	int A, O, X, N;
-	printf("x y A O X N\n");
-	printf("===========\n");
-	x=1, y=1; printf("%d,%d,%d,%d,%d,%d\n",x,y,x&&y,x||y,x^y,!x);
-	x=1, y=0; printf("%d,%d,%d,%d,%d,%d\n",x,y,x&&y,x||y,x^y,!x);
-	x=0, y=1; printf("%d,%d,%d,%d,%d,%d\n",x,y,x&&y,x||y,x^y,!x);
-	x=0, y=0; printf("%d,%d,%d,%d,%d,%d\n",x,y,x&&y,x||y,x^y,!x);
-    return 0;
-
+	
+	int n=5.25; //소수부의손실 
+	float d=3.0; //값의표현이 넓은 범위로 변환
+	int c=129;
+	
+	printf("n:%d  d:%f  c:%d\n",n,d,c); 
 }
