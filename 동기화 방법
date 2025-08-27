@@ -1,0 +1,10 @@
+동기화 방법
+git config --global user.email (가입한 이메일)
+git config --global user.name (가입한 닉네임)
+git clone [깃허브 리포지토리 주소]
+
+git pull //당겨오기
+
+git add .
+git commit -a (or -m [적고싶은 내용])
+git pull //보내기
