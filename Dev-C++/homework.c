@@ -1,5 +1,5 @@
 #include<stdio.h>
-#include<conio.h>
+#include<conio.h> //window only
 
 int main()
 {
@@ -7,40 +7,29 @@ int main()
 	
 	for(;;){
 		char a =getch();
-		
+		if(a=='#')
+		{printf("Program CLOSE.\n");
+		break;
+		}
 		switch(a)
 		{
-			case '1':printf(">%c  :  숫자\n",a);
+			case '1': case '2':	case '3': case '4': case '5':
+			case '6': case '7': case '8': case '9': case '0':	
+			printf(">%c  :  숫자\n",a);
 			break;
-			
-			case '2':printf(">%c  :  숫자\n",a);
+
+			default:
+			if (a>='a' && a <='z')
+			{printf(">%c  :  소문자\n",a);
+						}
+			else if	(a>='A' && a <='Z')
+			{printf(">%c  :  대문자\n",a);
+					}		
+			else {
+				printf(">%c  :  특수문자\n",a);
+			}
 			break;
-			
-			case '3':printf(">%c  :  숫자\n",a);
-			break;
-			
-			case '4':printf(">%c  :  숫자\n",a);
-			break;
-			
-			case '5':printf(">%c  :  숫자\n",a);
-			break;
-			
-			case '6':printf(">%c  :  숫자\n",a);
-			break;
-			
-			case '7':printf(">%c  :  숫자\n",a);
-			break;
-			
-			case '8':printf(">%c  :  숫자\n",a);
-			break;
-			
-			case '9':printf(">%c  :  숫자\n",a);
-			break;
-			
-			case '0':printf(">%c  :  숫자\n",a);
-			break;
-			
-			case 'a':printf(">%c  :  소문자\n",a);
+			/*case 'a':printf(">%c  :  소문자\n",a);
 			break;
 			
 			case 'b':printf(">%c  :  소문자\n",a);
@@ -64,8 +53,9 @@ int main()
 			case '@':printf(">%c  :  특수문자\n",a);
 			break;
 			
-			default:a = 3; break;
+			default:a = 3; break;*/
 		}
-		if(a==3)break;
+		//if(a==3)break;
 	}
+	return 0;
 }
