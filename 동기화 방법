@@ -1,0 +1,25 @@
+동기화 방법
+git config --global user.email (가입한 이메일)
+git config --global user.name (가입한 닉네임)
+git clone [깃허브 리포지토리 주소]
+
+git pull //당겨오기
+
+git add .
+git commit -a (or -m [적고싶은 내용])
+git pull //보내기
+
+git pull origin main --rebase   # 원격 최신 내용과 합치기
+git push origin main
+
+// 로컬 저장소 & 원격 저장소 파일 삭제
+$ git rm [File Name]
+
+// 원격 저장소만 파일 삭제 ( 로컬 저장소는 삭제되지 않음 )
+$ git rm --cached [File Name]
+
+// 완전히 제거를 위한 commit 명령어 수행
+$ git commit -m "Fixed untracked files"
+
+// origin branch push
+$ git push origin master

@@ -1,0 +1,6 @@
+//hello
+
+int main(void)
+{
+	
+ } 
