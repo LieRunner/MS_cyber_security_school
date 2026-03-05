@@ -40,4 +40,5 @@
 # debug information files
 *.dwo
 *.bat
-
+# 민감정보 로컬파일
+*.txt
