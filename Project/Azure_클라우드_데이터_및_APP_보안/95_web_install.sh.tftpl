@@ -1,0 +1,145 @@
+﻿#!/bin/bash
+set -euo pipefail
+set -x
+
+# ------------------------------------------------------------------
+# [Fix] 패키지 설치 충돌 방지 & 재시도 로직 추가 (완전판)
+# ------------------------------------------------------------------
+
+# [핵심 함수] DNF 재시도 함수 정의
+# 설명: 패키지 설치 실패 시 락 파일을 지우고 최대 5번까지 다시 시도합니다.
+function retry_dnf() {
+    local retries=5
+    local count=0
+    local wait_time=10
+
+    # 명령어가 성공할 때까지 반복 (until)
+    until dnf "$@"; do
+        exit_code=$?
+        count=$((count + 1))
+        
+        if [ $count -lt $retries ]; then
+            echo "⚠️ DNF command failed (Exit code: $exit_code). Retrying in $wait_time seconds... ($count/$retries)"
+            
+            # 실패 원인일 수 있는 프로세스 및 락 파일 제거
+            pkill -9 dnf || true
+            pkill -9 yum || true
+            pkill -9 rpm || true
+            rm -f /var/lib/rpm/.rpm.lock
+            rm -f /var/lib/dnf/lock
+            
+            # 잠시 대기 (OS가 파일 핸들을 정리할 시간)
+            sleep $wait_time
+        else
+            echo "❌ DNF failed after $retries attempts."
+            return $exit_code
+        fi
+    done
+    echo "✅ DNF command succeeded."
+}
+
+# 1. 자동 업데이트 타이머 강제 중지
+echo "Stopping dnf-makecache timer..."
+systemctl stop dnf-makecache.timer || true
+systemctl disable dnf-makecache.timer || true
+
+# 2. 실행 중인 패키지 관리자 강제 종료
+echo "Killing running dnf/yum processes..."
+pkill -9 dnf || true
+pkill -9 yum || true
+pkill -9 rpm || true
+
+# 3. 잠금 파일 강제 삭제
+rm -f /var/lib/rpm/.rpm.lock
+rm -f /var/lib/dnf/lock
+
+# [추가] 프로세스 정리 후 안정화 대기 (중요)
+sleep 5
+
+# 4. GPG Key 수동 임포트
+echo "Importing GPG Keys manually..."
+rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-Rocky-9 || true
+
+# 5. RPM DB 재구축
+rpm --rebuilddb
+
+# ------------------------------------------------------------------
+
+# 1. SELinux 해제
+setenforce 0 || true
+sed -i 's/^SELINUX=enforcing$/SELINUX=permissive/' /etc/selinux/config
+
+# 2. SSH 및 보안 정책 업데이트 (재시도 함수 사용)
+# 기존: dnf -y upgrade ... -> 변경: retry_dnf -y upgrade ...
+retry_dnf -y upgrade openssl openssl-libs openssh openssh-server openssh-clients
+systemctl restart sshd
+update-crypto-policies --set LEGACY
+
+# 3. 필수 패키지 설치 (재시도 함수 사용)
+retry_dnf -y install httpd php php-cli php-mysqlnd php-gd php-xml php-mbstring php-json curl wget tar unzip mysql nmap-ncat
+
+# 4. (삭제됨) SSL 관련 로직 제거
+
+# 5. DB 연결 대기
+set +e
+for i in $(seq 1 180); do
+  if nc -z "${db_host}" 3306; then
+    echo "DB Connection Success!"
+    DB_SUCCESS=true
+    break
+  fi
+  echo "Waiting for DB (${db_host})..."
+  sleep 5
+done
+set -e
+
+# 6. Read-Only 유저 생성 및 권한 부여
+if [ "$${DB_SUCCESS:-false}" = "true" ]; then
+mysql -h "${db_host}" -u "${db_admin}" -p"${db_admin_pass}" <<EOF
+CREATE DATABASE IF NOT EXISTS ${db_name};
+CREATE USER IF NOT EXISTS '${ro_db_user}'@'%' IDENTIFIED BY '${ro_db_pass}';
+GRANT ALL PRIVILEGES ON ${db_name}.* TO '${ro_db_user}'@'%';
+FLUSH PRIVILEGES;
+EOF
+else
+  echo "Warning: Database connection failed. Skipping DB user creation. Check DB Server status."
+fi
+
+# 7. 워드프레스 다운로드 및 설정
+mkdir -p /var/www/html
+cd /var/www/html
+wget --no-check-certificate https://ko.wordpress.org/wordpress-6.9.1-ko_KR.tar.gz
+tar -xzf wordpress-6.9.1-ko_KR.tar.gz
+mv wordpress/* .
+rm -rf wordpress wordpress-6.9.1-ko_KR.tar.gz
+chown -R apache:apache /var/www/html
+
+# wp-config.php 생성
+cp wp-config-sample.php wp-config.php
+sed -i "s/database_name_here/${db_name}/" wp-config.php
+sed -i "s/username_here/${ro_db_user}/" wp-config.php
+sed -i "s/password_here/${ro_db_pass}/" wp-config.php
+sed -i "s/localhost/${db_host}/" wp-config.php
+
+# 추가 설정 (홈 URL 등)
+cat <<PHP >> wp-config.php
+define('WP_HOME', 'http://${custom_domain}');
+define('WP_SITEURL', 'http://${custom_domain}');
+PHP
+
+# 8. 헬스 체크 파일 생성
+echo "wordpress-health" > /var/www/html/health.html
+chown apache:apache /var/www/html/health.html
+
+# 9. 로그 설정 (Syslog 연동)
+sed -i 's|^ErrorLog "logs/error_log"|#ErrorLog "logs/error_log"|g' /etc/httpd/conf/httpd.conf
+sed -i 's|^CustomLog "logs/access_log" combined|#CustomLog "logs/access_log" combined|g' /etc/httpd/conf/httpd.conf
+
+echo 'ErrorLog "|/usr/bin/logger -t httpd -p user.err"' >> /etc/httpd/conf/httpd.conf
+echo 'CustomLog "|/usr/bin/logger -t httpd -p user.info" combined' >> /etc/httpd/conf/httpd.conf
+
+# 10. Apache 시작 및 SELinux 네트워크 허용
+systemctl enable --now httpd
+setsebool -P httpd_can_network_connect 1 || true
+
+echo "Native WordPress Installation Complete."

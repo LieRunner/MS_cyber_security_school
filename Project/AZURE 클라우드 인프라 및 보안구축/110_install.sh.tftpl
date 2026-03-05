@@ -1,0 +1,127 @@
+﻿#! /bin/bash
+set -euo pipefail
+set -x  # 디버깅을 위해 실행 로그 출력
+
+# 1. SELinux 해제
+setenforce 0 || true
+sed -i 's/^SELINUX=enforcing$/SELINUX=permissive/' /etc/selinux/config
+
+# 2. SSH 및 보안 정책 업데이트 (접속 및 다운로드 에러 방지)
+dnf -y upgrade openssl openssl-libs openssh openssh-server openssh-clients
+systemctl restart sshd
+update-crypto-policies --set LEGACY
+
+# 3. 필수 패키지 및 도커 설치
+dnf -y install curl wget nmap-ncat tar mysql dnf-plugins-core
+sudo dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+sudo dnf -y install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo systemctl enable --now docker
+sleep 10 # Docker 데몬 시작 대기
+# 4. SSL 인증서 다운로드 (핸드쉐이크 에러 방지를 위해 -k 옵션 추가 및 wget 대체 시도)
+mkdir -p /home/jbchoe/certs 
+curl -k -L https://dl.cacerts.digicert.com/DigiCertGlobalRootG2.crt.pem -o /home/jbchoe/certs/azure-cert.pem || \
+wget --no-check-certificate https://dl.cacerts.digicert.com/DigiCertGlobalRootG2.crt.pem -O /home/jbchoe/certs/azure-cert.pem
+chmod 644 /home/jbchoe/certs/azure-cert.pem
+
+# 5. DB 연결 대기
+for i in $(seq 1 180); do
+  if nc -z "${db_host}" 3306; then
+    echo "DB Connection Success!"
+    break
+  fi
+  echo "Waiting for DB..."
+  sleep 2
+done
+
+# 6. Read-Only 유저 생성 (실제로는 WordPress 구동을 위해 쓰기 권한이 필요하므로 ALL PRIVILEGES 부여)
+# 사용자가 "해당 데이터베이스에게만 모든 권한을 주는 방식"을 요청함
+mysql -h "${db_host}" -u "${db_admin}" -p"${db_admin_pass}" --ssl-ca=/home/jbchoe/certs/azure-cert.pem <<EOF
+CREATE USER IF NOT EXISTS '${ro_db_user}'@'%' IDENTIFIED BY '${ro_db_pass}';
+GRANT ALL PRIVILEGES ON ${db_name}.* TO '${ro_db_user}'@'%';
+FLUSH PRIVILEGES;
+EOF
+
+
+# =======================================================
+# [고가용성 아키텍처 구축] Nginx LB + WordPress x 2
+# =======================================================
+
+# 6. 도커 내부 네트워크 생성 (컨테이너끼리 서로 이름으로 찾기 위함)
+docker network create wp-network || true
+
+# 함수: 컨테이너 실행 (무조건 삭제 후 재생성 - 가장 확실한 방법)
+run_container_if_not_exists() {
+  local container_name="$1"
+  shift
+  
+  echo "Deploying container: $${container_name}"
+  
+  # 기존 컨테이너가 있으면 삭제 (에러 무시)
+  docker rm -f "$${container_name}" || true
+  
+  # 컨테이너 실행
+  docker run -d --name "$${container_name}" "$@"
+}
+
+# 7. 워드프레스 컨테이너 1번 (Host Port 8081)
+run_container_if_not_exists wordpress-1 \
+  -p 8081:80 \
+  --network wp-network \
+  --restart always \
+  -v /home/jbchoe/certs:/var/www/html/certs \
+  -e WORDPRESS_DB_HOST="${db_host}" \
+  -e WORDPRESS_DB_NAME="${db_name}" \
+  -e WORDPRESS_DB_USER="${ro_db_user}" \
+  -e WORDPRESS_DB_PASSWORD="${ro_db_pass}" \
+  -e WORDPRESS_CONFIG_EXTRA="define('MYSQL_CLIENT_FLAGS', MYSQLI_CLIENT_SSL); define('MYSQL_SSL_CA', '/var/www/html/certs/azure-cert.pem'); define('WP_HOME', 'http://${custom_domain}'); define('WP_SITEURL', 'http://${custom_domain}');" \
+  wordpress
+
+# 8. 워드프레스 컨테이너 2번 (Host Port 8082)
+run_container_if_not_exists wordpress-2 \
+  -p 8082:80 \
+  --network wp-network \
+  --restart always \
+  -v /home/jbchoe/certs:/var/www/html/certs \
+  -e WORDPRESS_DB_HOST="${db_host}" \
+  -e WORDPRESS_DB_NAME="${db_name}" \
+  -e WORDPRESS_DB_USER="${ro_db_user}" \
+  -e WORDPRESS_DB_PASSWORD="${ro_db_pass}" \
+  -e WORDPRESS_CONFIG_EXTRA="define('MYSQL_CLIENT_FLAGS', MYSQLI_CLIENT_SSL); define('MYSQL_SSL_CA', '/var/www/html/certs/azure-cert.pem'); define('WP_HOME', 'http://${custom_domain}'); define('WP_SITEURL', 'http://${custom_domain}');" \
+  wordpress
+
+# 9. 헬스 체크 파일 생성 (두 컨테이너 모두)
+sleep 10
+docker exec wordpress-1 sh -c 'echo "wordpress-1" > /var/www/html/health.html' && docker exec wordpress-1 chown www-data:www-data /var/www/html/health.html
+docker exec wordpress-2 sh -c 'echo "wordpress-2" > /var/www/html/health.html' && docker exec wordpress-2 chown www-data:www-data /var/www/html/health.html
+
+# 10. Nginx 설정 파일 생성 (로드밸런서)
+mkdir -p /home/jbchoe/nginx
+cat <<EOF > /home/jbchoe/nginx/nginx.conf
+events {}
+http {
+    upstream myapp {
+        # 내부 네트워크를 통해 이름으로 접속 (라운드 로빈)
+        server wordpress-1:80;
+        server wordpress-2:80;
+    }
+    server {
+        listen 80;
+        location / {
+            proxy_pass http://myapp;
+            proxy_set_header Host \$host;
+            proxy_set_header X-Real-IP \$remote_addr;
+            proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        }
+    }
+}
+EOF
+
+# 11. Nginx 로드밸런서 실행 (Host Port 80)
+run_container_if_not_exists nginx-lb \
+  -p 80:80 \
+  --network wp-network \
+  --restart always \
+  -v /home/jbchoe/nginx/nginx.conf:/etc/nginx/nginx.conf:ro \
+  nginx
+
+echo "Installation Complete."

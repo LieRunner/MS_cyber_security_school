@@ -1,0 +1,12 @@
+﻿#! /bin/bash
+
+# CAUTION: This file is managed by Terraform. Do not edit manually.
+# Source: key.sh.tftpl
+
+setenforce 0
+echo -e "${private_key}" > /home/jbchoe/.ssh/id_rsa
+chown jbchoe.jbchoe /home/jbchoe/.ssh/id_rsa
+chmod 600 /home/jbchoe/.ssh/id_rsa
+
+# Install MySQL Client
+dnf -y install mysql
